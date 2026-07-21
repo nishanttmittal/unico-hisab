@@ -5,7 +5,7 @@
  * anonymous baseline for sync, then Google login gated to the owner allowlist.
  */
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { onSnapshot, setDoc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore'
+import { onSnapshot, setDoc, deleteDoc, getDocs, writeBatch, collection, addDoc } from 'firebase/firestore'
 import { db, paths, ensureSignedIn, watchAuth, signInWithGoogle, signOutUser } from '../../core/db/firebase'
 import { makeId } from '../../core/db/repository'
 
@@ -60,12 +60,41 @@ export function HisabProvider({ children }) {
   const expenses = useCloudCollection(paths.expenses, paths.expense, authKey)
   const uploads = useCloudCollection(paths.uploads, paths.upload, authKey)
 
+  // Advance-push destinations: welders (apps/welder/welders) + salary workers
+  // (att_salary). The owner login can read both; best-effort (empty if denied).
+  const email = user && !user.isAnonymous ? (user.email || '') : ''
+  const [targets, setTargets] = useState({ welders: [], salary: [] })
+  useEffect(() => {
+    if (!email) { setTargets({ welders: [], salary: [] }); return }
+    let alive = true
+    ;(async () => {
+      const out = { welders: [], salary: [] }
+      try {
+        const w = await getDocs(collection(db, 'apps', 'welder', 'welders'))
+        out.welders = w.docs.map((d) => ({ name: d.data().name || d.id })).filter((x) => x.name)
+      } catch { /* denied/offline */ }
+      try {
+        const s = await getDocs(collection(db, 'att_salary'))
+        out.salary = s.docs.map((d) => ({ code: d.id, name: d.data().name || d.id }))
+          .filter((x) => x.name && x.code !== '_config').sort((a, b) => a.name.localeCompare(b.name))
+      } catch { /* denied/offline */ }
+      if (alive) setTargets(out)
+    })()
+    return () => { alive = false }
+  }, [email]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pushAdvance = useCallback((t) => addDoc(collection(db, 'hisab_advance_outbox'), {
+    target: t.target, name: t.name || '', code: t.code || '',
+    amount: Number(t.amount) || 0, date: t.date || '', note: t.note || '',
+    status: 'pending', source: 'hisab', createdAt: new Date().toISOString(),
+  }), [])
+
   const value = {
-    user,
-    email: user && !user.isAnonymous ? (user.email || '') : '',
+    user, email,
     signIn: useCallback(() => signInWithGoogle(), []),
     signOut: useCallback(() => signOutUser(), []),
     suppliers, ledger, expenses, uploads,
+    advanceTargets: targets, pushAdvance,
   }
   return <HisabCtx.Provider value={value}>{children}</HisabCtx.Provider>
 }

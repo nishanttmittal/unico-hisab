@@ -8,15 +8,25 @@ import { Button, Card, FieldLabel, Select, NumberInput, DateInput, TextInput } f
 import { CATEGORIES, CAT_COLOR, isAdvanceCat, expenseSummary, monthOf, fmtMonth, rupee, num, dmy } from './logic'
 import { expensePdf } from './pdf'
 import PhotoUpload from './PhotoUpload'
+import { useHisab } from './cloud'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
 export default function Expenses({ expenses, uploads }) {
+  const { advanceTargets, pushAdvance } = useHisab()
   const [showAdd, setShowAdd] = useState(false)
   const [date, setDate] = useState(today())
   const [cat, setCat] = useState(CATEGORIES[0])
   const [amount, setAmount] = useState('')
   const [desc, setDesc] = useState('')
+  const [pushTo, setPushTo] = useState('')
+  const [pushMsg, setPushMsg] = useState('')
+
+  const targetOptions = [
+    { value: '', label: '— Just record (don\'t push)' },
+    ...(advanceTargets?.welders || []).map((w) => ({ value: `welder:${w.name}`, label: `Welder — ${w.name}` })),
+    ...(advanceTargets?.salary || []).map((s) => ({ value: `salary:${s.code}`, label: `Salary — ${s.name}` })),
+  ]
 
   const months = useMemo(() => {
     const set = new Set(expenses.list.map((e) => monthOf(e.date)).filter(Boolean))
@@ -32,16 +42,27 @@ export default function Expenses({ expenses, uploads }) {
   )
   const s = expenseSummary(rows)
 
-  const save = () => {
+  const save = async () => {
     const amt = Number(amount)
     if (!amt || amt <= 0) return
     expenses.insert({ date, cat, amount: amt, desc: desc.trim(), adv: isAdvanceCat(cat) || undefined, material: cat === 'Material & Tools' || undefined })
-    setAmount(''); setDesc(''); setShowAdd(false)
+    // If it's an advance AND a destination is picked, push it for accept in that app.
+    if (isAdvanceCat(cat) && pushTo) {
+      const [target, rest] = [pushTo.slice(0, pushTo.indexOf(':')), pushTo.slice(pushTo.indexOf(':') + 1)]
+      const name = target === 'salary' ? (advanceTargets.salary.find((s) => s.code === rest)?.name || rest) : rest
+      try {
+        await pushAdvance({ target, name, code: target === 'salary' ? rest : '', amount: amt, date, note: desc.trim() })
+        setPushMsg(`✓ Advance of ₹${amt} pushed to ${name} — open the ${target === 'salary' ? 'Salary' : 'Welder'} app to Accept it.`)
+        setTimeout(() => setPushMsg(''), 6000)
+      } catch (e) { setPushMsg('✗ push failed: ' + e.message) }
+    }
+    setAmount(''); setDesc(''); setPushTo(''); setShowAdd(false)
     setYm(monthOf(date))
   }
 
   return (
     <div className="space-y-3">
+      {pushMsg && <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-emerald-800">{pushMsg}</div>}
       {uploads && <PhotoUpload uploads={uploads} kind="expense" />}
 
       {!showAdd && (
@@ -54,6 +75,12 @@ export default function Expenses({ expenses, uploads }) {
           <div><FieldLabel>Category</FieldLabel><Select options={CATEGORIES} value={cat} onChange={(e) => setCat(e.target.value)} className="mt-1" /></div>
           <div><FieldLabel>Amount ₹</FieldLabel><NumberInput value={amount} placeholder="0" autoFocus onChange={(e) => setAmount(e.target.value)} className="mt-1 text-2xl text-center font-mono" /></div>
           <div><FieldLabel>Note (optional)</FieldLabel><TextInput value={desc} placeholder="e.g. 6 chai, porter, petrol…" onChange={(e) => setDesc(e.target.value)} className="mt-1" /></div>
+          {isAdvanceCat(cat) && (
+            <div>
+              <FieldLabel>Push advance to (accept in that app)</FieldLabel>
+              <Select className="mt-1" options={targetOptions} value={pushTo} onChange={(e) => setPushTo(e.target.value)} />
+            </div>
+          )}
           <div className="flex gap-2">
             <Button variant="ghost" className="flex-1" onClick={() => setShowAdd(false)}>Cancel</Button>
             <Button variant="success" className="flex-1" onClick={save} disabled={!Number(amount)}>Save</Button>
