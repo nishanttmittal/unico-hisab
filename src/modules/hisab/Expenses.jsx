@@ -7,10 +7,11 @@ import { useState, useMemo } from 'react'
 import { Button, Card, FieldLabel, Select, NumberInput, DateInput, TextInput } from '../../core/ui'
 import { CATEGORIES, CAT_COLOR, isAdvanceCat, expenseSummary, monthOf, fmtMonth, rupee, num, dmy } from './logic'
 import { expensePdf } from './pdf'
+import PhotoUpload from './PhotoUpload'
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-export default function Expenses({ expenses }) {
+export default function Expenses({ expenses, uploads }) {
   const [showAdd, setShowAdd] = useState(false)
   const [date, setDate] = useState(today())
   const [cat, setCat] = useState(CATEGORIES[0])
@@ -41,6 +42,8 @@ export default function Expenses({ expenses }) {
 
   return (
     <div className="space-y-3">
+      {uploads && <PhotoUpload uploads={uploads} kind="expense" />}
+
       {!showAdd && (
         <Button size="lg" className="w-full" onClick={() => { setDate(today()); setShowAdd(true) }}>➕ Naya kharcha</Button>
       )}

@@ -20,7 +20,7 @@ const TABS = [
 
 function Shell() {
   const [tab, setTab] = useState('home')
-  const { suppliers, ledger, expenses, email, signOut } = useHisab()
+  const { suppliers, ledger, expenses, uploads, email, signOut } = useHisab()
 
   return (
     <div className="min-h-screen bg-[#f8f6f2] pb-20">
@@ -38,7 +38,7 @@ function Shell() {
 
       <main className="max-w-lg mx-auto px-4 py-4">
         {tab === 'home' && <Home suppliers={suppliers} ledger={ledger} expenses={expenses} go={setTab} />}
-        {tab === 'kharcha' && <Expenses expenses={expenses} />}
+        {tab === 'kharcha' && <Expenses expenses={expenses} uploads={uploads} />}
         {tab === 'udhaar' && <Suppliers suppliers={suppliers} ledger={ledger} />}
       </main>
 

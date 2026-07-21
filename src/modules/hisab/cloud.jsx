@@ -58,13 +58,14 @@ export function HisabProvider({ children }) {
   const suppliers = useCloudCollection(paths.suppliers, paths.supplier, authKey)
   const ledger = useCloudCollection(paths.ledger, paths.ledgerDoc, authKey)
   const expenses = useCloudCollection(paths.expenses, paths.expense, authKey)
+  const uploads = useCloudCollection(paths.uploads, paths.upload, authKey)
 
   const value = {
     user,
     email: user && !user.isAnonymous ? (user.email || '') : '',
     signIn: useCallback(() => signInWithGoogle(), []),
     signOut: useCallback(() => signOutUser(), []),
-    suppliers, ledger, expenses,
+    suppliers, ledger, expenses, uploads,
   }
   return <HisabCtx.Provider value={value}>{children}</HisabCtx.Provider>
 }
