@@ -1,17 +1,13 @@
 /**
- * Firebase service for the Transport Freight Hisab app. Shares the SAME project
- * (`unico-operations`) as the other UNICO apps, under its own namespace so a
- * future combined ERP dashboard can read every app uniformly:
- *   apps/transportfreight/transporters/{id}  ← gaadiwalas we pay
- *   apps/transportfreight/destinations/{id}   ← transport booking offices (dropdown)
- *   apps/transportfreight/entries/{id}        ← one drop to one destination
- *   apps/transportfreight/advances/{id}       ← money paid to a gaadiwala
- *   apps/transportfreight/settlements/{id}    ← finalized + locked hisab
- *   apps/transportfreight/users/{id}          ← role-based access
- *   apps/transportfreight/logs/{id}
- * Offline-capable (persistent cache) so staff can record without internet.
+ * Firebase service for UNICO Hisab. Shares the `unico-operations` project under
+ * its own namespace so a future combined dashboard can read every app uniformly:
+ *   apps/hisab/suppliers/{id}  ← suppliers we owe (udhaar)
+ *   apps/hisab/ledger/{id}     ← one purchase / payment / adjustment on a supplier
+ *   apps/hisab/expenses/{id}   ← one daily kharcha line
+ *   apps/hisab/users/{id}      ← access allowlist
+ * Offline-capable (persistent cache) so it works without internet, then syncs.
  */
-import { initializeApp, getApp } from 'firebase/app'
+import { initializeApp } from 'firebase/app'
 import {
   initializeFirestore, collection, doc,
   persistentLocalCache, persistentMultipleTabManager,
@@ -22,7 +18,7 @@ import {
 } from 'firebase/auth'
 import { firebaseConfig, isFirebaseConfigured } from './firebaseConfig'
 
-const APP_NS = 'transportfreight'
+const APP_NS = 'hisab'
 
 let app = null
 let db = null
@@ -43,31 +39,21 @@ const coll = (name) => collection(db, 'apps', APP_NS, name)
 const cdoc = (name, id) => doc(db, 'apps', APP_NS, name, id)
 
 export const paths = {
-  transporters: () => coll('transporters'),
-  transporter: (id) => cdoc('transporters', id),
-  destinations: () => coll('destinations'),
-  destination: (id) => cdoc('destinations', id),
-  entries: () => coll('entries'),
-  entry: (id) => cdoc('entries', id),
-  advances: () => coll('advances'),
-  advance: (id) => cdoc('advances', id),
-  settlements: () => coll('settlements'),
-  settlementDoc: (id) => cdoc('settlements', id),
+  suppliers: () => coll('suppliers'),
+  supplier: (id) => cdoc('suppliers', id),
+  ledger: () => coll('ledger'),
+  ledgerDoc: (id) => cdoc('ledger', id),
+  expenses: () => coll('expenses'),
+  expense: (id) => cdoc('expenses', id),
   users: () => coll('users'),
   user: (id) => cdoc('users', id),
-  logs: () => coll('logs'),
-  logDoc: (id) => cdoc('logs', id),
-  counters: () => cdoc('meta', 'counters'),
 }
 
 export function ensureSignedIn() {
   return new Promise((resolve, reject) => {
     if (!auth) return reject(new Error('Firebase not configured'))
-    // FIX 2026-07-19 (review finding C — the login LOOP): signInAnonymously used to fire
-    // unconditionally here, racing auth restore. After a Google signInWithRedirect return
-    // (installed PWA) it REPLACED the just-restored Google session with a fresh anonymous
-    // one — bouncing the user to the sign-in screen forever. Now we wait for the first
-    // auth state and only take the anonymous baseline when there is truly NO user.
+    // Wait for the first auth state; only take the anonymous baseline when there
+    // is truly NO user (never replace a restored Google session — the login loop).
     let triedAnon = false
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user) { unsub(); resolve(user.uid); return }
@@ -77,19 +63,14 @@ export function ensureSignedIn() {
 }
 
 /**
- * Sign the MAIN session in with Google (Staff/Owner). This replaces the
- * anonymous session so Firestore rules can see request.auth.token.email and
- * enforce roles. On iPhone Safari, popups can be blocked — we fall back to a
- * full-page redirect automatically.
+ * Sign in with Google. On an installed home-screen PWA (iOS/Android standalone),
+ * a popup can never message back and hangs forever — go straight to full-page
+ * redirect there; otherwise try popup and fall back to redirect if it's blocked.
  */
 export async function signInWithGoogle() {
   if (!auth) throw new Error('Cloud not configured')
   const provider = new GoogleAuthProvider()
   provider.setCustomParameters({ prompt: 'select_account' })
-  // FIX 2026-07-19 (the 3-July→ outage): in an INSTALLED home-screen PWA (iOS/Android
-  // standalone), signInWithPopup opens a window that can never message back — it neither
-  // resolves nor rejects, so the button hung at "Opening…" forever and staff could not
-  // log in at all. Standalone mode must go straight to the full-page redirect.
   const standalone = typeof window !== 'undefined' &&
     (window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator?.standalone === true)
   if (standalone) {
@@ -107,26 +88,9 @@ export async function signInWithGoogle() {
   }
 }
 
-/** Sign out the current user (returns to the Google sign-in screen). */
 export function signOutUser() { return auth ? auth.signOut() : Promise.resolve() }
 
-/** Subscribe to auth state. Calls cb(user|null); user.isAnonymous distinguishes anon. */
 export function watchAuth(cb) {
   if (!auth) { cb(null); return () => {} }
   return onAuthStateChanged(auth, cb)
-}
-
-/** Google identity check for unlocking Admin (isolated secondary app). */
-export async function verifyAdminGoogle() {
-  if (!isFirebaseConfigured) throw new Error('Cloud not configured')
-  const NAME = 'adminVerify'
-  let secondary
-  try { secondary = getApp(NAME) } catch { secondary = initializeApp(firebaseConfig, NAME) }
-  const aAuth = getAuth(secondary)
-  const provider = new GoogleAuthProvider()
-  provider.setCustomParameters({ prompt: 'select_account' })
-  const cred = await signInWithPopup(aAuth, provider)
-  const email = (cred.user.email || '').toLowerCase()
-  await aAuth.signOut().catch(() => {})
-  return email
 }

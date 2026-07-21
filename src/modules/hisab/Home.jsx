@@ -5,7 +5,6 @@
  */
 import { useRef, useState } from 'react'
 import { totalPayable, expenseSummary, monthOf, fmtMonth, rupee } from './logic'
-import { exportAll, importAll } from './data'
 
 export default function Home({ suppliers, ledger, expenses, go }) {
   const owed = totalPayable(suppliers.list, ledger.list)
@@ -18,24 +17,27 @@ export default function Home({ suppliers, ledger, expenses, go }) {
   const [msg, setMsg] = useState('')
 
   const doExport = () => {
-    const blob = new Blob([JSON.stringify(exportAll(), null, 2)], { type: 'application/json' })
+    const data = { app: 'unico-hisab', version: 1, exportedAt: new Date().toISOString(),
+      suppliers: suppliers.list, ledger: ledger.list, expenses: expenses.list }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = `unico-hisab-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click(); URL.revokeObjectURL(url)
   }
-  const doImport = (e) => {
+  const doImport = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        importAll(JSON.parse(reader.result))
-        suppliers.refresh(); ledger.refresh(); expenses.refresh()
-        setMsg('✓ Data imported')
-      } catch (err) { setMsg('✗ ' + err.message) }
-      setTimeout(() => setMsg(''), 3000)
-    }
-    reader.readAsText(file); e.target.value = ''
+    try {
+      const data = JSON.parse(await file.text())
+      if (!data || data.app !== 'unico-hisab') throw new Error('Not a UNICO Hisab data file')
+      if (!confirm('Import will REPLACE all current data with the file. Continue?')) return
+      await suppliers.replaceAll(Array.isArray(data.suppliers) ? data.suppliers : [])
+      await ledger.replaceAll(Array.isArray(data.ledger) ? data.ledger : [])
+      await expenses.replaceAll(Array.isArray(data.expenses) ? data.expenses : [])
+      setMsg('✓ Data imported')
+    } catch (err) { setMsg('✗ ' + err.message) }
+    setTimeout(() => setMsg(''), 3000)
+    e.target.value = ''
   }
 
   const Big = ({ color, label, value, sub, onClick }) => (

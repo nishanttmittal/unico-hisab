@@ -1,21 +1,16 @@
 /**
- * UNICO Hisab — factory money register. Single-owner, local-first PWA.
+ * UNICO Hisab — factory money register. Single-owner PWA, Firebase-synced.
  *   • Kharcha  — daily factory expenses (categorised, advances/material split)
  *   • Udhaar   — supplier payables (per-supplier running ledger)
- * Data lives on THIS device (localStorage). Firebase sync is a later swap
- * (the storage adapter is built for it) — see README.
+ * Google sign-in (owner allowlist); data in Firestore (apps/hisab/*), realtime
+ * across devices + offline-capable. No money data in the public bundle.
  */
 import { useState } from 'react'
-import { PasswordGate } from './core/ui'
-import { useCollection } from './core/hooks/useCollection'
-import { suppliersRepo, ledgerRepo, expensesRepo } from './modules/hisab/data'
+import { HisabProvider, useHisab } from './modules/hisab/cloud'
+import AuthGate from './modules/hisab/AuthGate'
 import Home from './modules/hisab/Home'
 import Expenses from './modules/hisab/Expenses'
 import Suppliers from './modules/hisab/Suppliers'
-
-// Local-device gate. Change here (or ask Claude) — data is on-device, so this
-// only stops someone casually opening the app on your phone.
-const PASSWORD = ['unico', 'nsp']
 
 const TABS = [
   { key: 'home', label: 'Home', icon: '🏠' },
@@ -25,9 +20,7 @@ const TABS = [
 
 function Shell() {
   const [tab, setTab] = useState('home')
-  const suppliers = useCollection(suppliersRepo)
-  const ledger = useCollection(ledgerRepo)
-  const expenses = useCollection(expensesRepo)
+  const { suppliers, ledger, expenses, email, signOut } = useHisab()
 
   return (
     <div className="min-h-screen bg-[#f8f6f2] pb-20">
@@ -35,10 +28,11 @@ function Shell() {
         style={{ paddingTop: 'calc(0.9rem + env(safe-area-inset-top))', paddingBottom: '0.9rem' }}>
         <div className="max-w-lg mx-auto flex items-center gap-3">
           <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center text-xl">₹</div>
-          <div>
+          <div className="flex-1">
             <div className="font-bold leading-tight text-lg">UNICO Hisab</div>
             <div className="text-white/70 text-xs">Factory paisa — udhaar &amp; kharcha</div>
           </div>
+          <button onClick={signOut} title={email} className="text-white/70 text-xs bg-white/10 rounded-lg px-2.5 py-1.5 font-semibold">Sign out</button>
         </div>
       </header>
 
@@ -63,8 +57,10 @@ function Shell() {
 
 export default function App() {
   return (
-    <PasswordGate password={PASSWORD} title="UNICO Hisab">
-      <Shell />
-    </PasswordGate>
+    <HisabProvider>
+      <AuthGate>
+        <Shell />
+      </AuthGate>
+    </HisabProvider>
   )
 }
