@@ -5,7 +5,8 @@
  * anonymous baseline for sync, then Google login gated to the owner allowlist.
  */
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { onSnapshot, setDoc, deleteDoc, getDocs, writeBatch, collection, addDoc } from 'firebase/firestore'
+import { setDoc, deleteDoc, writeBatch, collection, addDoc } from 'firebase/firestore'
+import { onSnapshot, getDocs } from '../../core/db/readmeter'   // metered reads → usage_reads (quota diagnosis)
 import { db, paths, ensureSignedIn, watchAuth, signInWithGoogle, signOutUser } from '../../core/db/firebase'
 import { makeId } from '../../core/db/repository'
 
